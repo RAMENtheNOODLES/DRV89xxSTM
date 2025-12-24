@@ -7,14 +7,20 @@
 #ifndef DRV89xxMotor_h
 #define DRV89xxMotor_h
 
-#include "Arduino.h"
+#include "stm32g4xx_hal.h"
+#include "stm32g474xx.h"
 #include "DRV89xxRegister.h"
+#include "CustomTypes.h"
+#include "STM32Utils.h"
+#include <cstdio>
+
 
 // from https://stackoverflow.com/a/263738/346227
 #define BIT_SET(a,b) ((a) |= (1ULL<<(b)))
 #define BIT_CLEAR(a,b) ((a) &= ~(1ULL<<(b)))
 #define BIT_FLIP(a,b) ((a) ^= (1ULL<<(b)))
 #define BIT_CHECK(a,b) (!!((a) & (1ULL<<(b))))        // '!!' to make sure this returns 0 or 1
+#define BIT_WRITE(a,b,n) (n == 1) ? BIT_SET(a, b) : BIT_CLEAR(a, b)
 
 #define HIGH_SIDE 1
 
@@ -30,8 +36,8 @@ typedef struct DRV89xxHalfBridge {
 class DRV89xxMotor
 {
   public:
-    DRV89xxMotor() : DRV89xxMotor(0, 0, 0, 0) {};
-    DRV89xxMotor(byte hb1, byte hb2, byte pwm_channel, byte reverse_delay);
+    DRV89xxMotor() : DRV89xxMotor(0, 0, 0, 0, NULL) {};
+    DRV89xxMotor(byte hb1, byte hb2, byte pwm_channel, byte reverse_delay, SysClock* clk);
 
     // This function pre-calculates register IDs and bitshift offsets for the selected half-bridge configuration
     void populateHalfbridgeOffsets(byte offset, byte half_bridge);
@@ -43,7 +49,7 @@ class DRV89xxMotor
     void disable();
     // Set the speed of this motor
     void set(byte speed, byte direction);
-    
+
   private:
     // Process variables
     int8_t _direction = 0;  // -1 = rev, 0 = brake, 1 = forward
@@ -52,6 +58,7 @@ class DRV89xxMotor
     bool _reverse_delay = 0;  // number of milliseconds to brake before reversing direction
     long int _last_forward = 0;  // last time forward was active
     long int _last_reverse = 0;  // last time reverse was active
+    SysClock* _clk;
     
 
     // configuration

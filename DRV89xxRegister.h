@@ -1,6 +1,8 @@
 #ifndef DRV89xxRegister_h
 #define DRV89xxRegister_h
 
+#include "CustomTypes.h"
+
 // map for DRV8912/10, mostly the same for other DRV89xx
 enum class DRV89xxRegister : byte {
   IC_STAT=0,
