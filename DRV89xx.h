@@ -27,6 +27,8 @@
 #define DRV89xx_BRAKE 0
 #define DRV89xx_REVERSE -1
 
+#define IS_BIT_SET(a, n) ((a & (1 << n)) != 0)
+
 typedef struct {
 	GPIO_TypeDef* port;
 	uint16_t 	  pin;
@@ -43,6 +45,7 @@ class DRV89xx
     byte writeRegister(byte address, byte value);
     byte readRegister(byte address);
     void readErrorStatus(bool print, bool reset);
+    void disableErroredMotors(uint16_t statusRegister);
     void writeConfig();
     void updateConfig();
 
@@ -50,6 +53,7 @@ class DRV89xx
       config_changed_ = true;
       _motor[motor].set(speed, direction); 
     };
+
     void disableMotor(byte motor){ 
       config_changed_ = true;
       _motor[motor].disable();

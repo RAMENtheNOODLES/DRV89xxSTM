@@ -5,8 +5,11 @@
 #include <cstdio>
 #include "error_irq.h"
 
-DRV89xx::DRV89xx(GPIOPinPort cs_pin, GPIOPinPort fault_pin, GPIOPinPort sleep_pin, SPI_HandleTypeDef* hSPI, SysClock* clk) :
-		_cs(cs_pin), _nFault(fault_pin), _nSleep(sleep_pin), _spi(hSPI), _clk(clk) {}
+DRV89xx::DRV89xx(GPIOPinPort cs_pin, GPIOPinPort fault_pin,
+		GPIOPinPort sleep_pin, SPI_HandleTypeDef *hSPI, SysClock *clk) :
+		_cs(cs_pin), _nFault(fault_pin), _nSleep(sleep_pin), _spi(hSPI), _clk(
+				clk) {
+}
 
 void DRV89xx::begin() {
 	printf("DRV89xx begin called\r\n");
@@ -42,7 +45,7 @@ void DRV89xx::configMotor(byte motor_id, byte hb1, byte hb2, byte pwm_channel,
 byte DRV89xx::writeRegister(byte address, byte value) {
 
 	uint8_t tx[2] = { address & 0x3F, value };
-	uint8_t rx[2] = {};
+	uint8_t rx[2] = { };
 	HAL_GPIO_WritePin(_cs.port, _cs.pin, GPIO_PIN_RESET);
 	HAL_SPI_TransmitReceive(_spi, tx, rx, 1, HAL_MAX_DELAY);
 	HAL_GPIO_WritePin(_cs.port, _cs.pin, GPIO_PIN_SET);
@@ -53,7 +56,7 @@ byte DRV89xx::writeRegister(byte address, byte value) {
 
 byte DRV89xx::readRegister(byte address) {
 
-	uint8_t tx[2] = { DRV89xx_REGISTER_READ | (address << 8), 0};
+	uint8_t tx[2] = { DRV89xx_REGISTER_READ | (address << 8), 0 };
 	uint8_t rx[2];
 	HAL_GPIO_WritePin(_cs.port, _cs.pin, GPIO_PIN_RESET);
 	// uint16_t ret = SPI.transfer16(DRV89xx_REGISTER_READ | (address << 8));
@@ -75,15 +78,19 @@ void DRV89xx::readErrorStatus(bool print, bool reset) {
 	} else {
 		if (print)
 			printf("No DRV errors seen\r\n");
+		return;
 	}
 	statusReg = readRegister(0x00);
 	if (print) {
 		printf("Status: 0x%04X\r\n", statusReg);
-		printf("Overcurrent: 0x%04X 0x%04X 0x%04X\r\n", readRegister(0x03), readRegister(0x02), readRegister(0x01));
-		printf("Open Load: 0x%04X 0x%04X 0x%04X\r\n", readRegister(0x06), readRegister(0x05), readRegister(0x04));
+		printf("Overcurrent: 0x%04X 0x%04X 0x%04X\r\n", readRegister(0x03),
+				readRegister(0x02), readRegister(0x01));
+		printf("Open Load: 0x%04X 0x%04X 0x%04X\r\n", readRegister(0x06),
+				readRegister(0x05), readRegister(0x04));
 	}
 
-	if ((HAL_GPIO_ReadPin(_nFault.port, _nFault.pin) == GPIO_PIN_RESET) && reset) {
+	if ((HAL_GPIO_ReadPin(_nFault.port, _nFault.pin) == GPIO_PIN_RESET)
+			&& reset) {
 		if (print) {
 			printf("Attempting to reset DRV!\r\n");
 		}
@@ -96,18 +103,7 @@ void DRV89xx::readErrorStatus(bool print, bool reset) {
 			HAL_GPIO_WritePin(_nSleep.port, _nSleep.pin, GPIO_PIN_RESET); // disable chip
 			HAL_GPIO_WritePin(_cs.port, _cs.pin, GPIO_PIN_SET); // disable chip select
 
-			if (statusReg & (1 << 7))
-				error_irq_trigger(ErrorCodes::DRVOTSDError);
-			else if (statusReg & (1 << 5))
-				error_irq_trigger(ErrorCodes::DRVOLDError);
-			else if (statusReg & (1 << 4))
-				error_irq_trigger(ErrorCodes::DRVOCPError);
-			else if (statusReg & (1 << 3))
-				error_irq_trigger(ErrorCodes::DRVUVLOError);
-			else if (statusReg & (1 << 2))
-				error_irq_trigger(ErrorCodes::DRVOVPError);
-			else
-				error_irq_trigger(ErrorCodes::DRVError);
+			disableErroredMotors(statusReg); // Check for troubled motors; disable them
 
 		}
 	}
@@ -115,20 +111,77 @@ void DRV89xx::readErrorStatus(bool print, bool reset) {
 	return;
 }
 
+/**
+ * Reads the status register and reads the specific registers
+ * and disables troubled motors.
+ * Will shutdown everything if fault affects the whole chip
+ */
+void DRV89xx::disableErroredMotors(uint16_t statusRegister) {
+	if (IS_BIT_SET(statusRegister, 6)) // Over temp error; shut everything down
+		error_irq_trigger(ErrorCodes::DRVOTSDError);
+	if (IS_BIT_SET(statusRegister, 4)) { // Overload error; selectively shutdown motors
+		printf("Over-load Protection Active... Disabling Troubled Motors...\r\n");
+		byte reg1 = readRegister(0x04);
+		byte reg2 = readRegister(0x05);
+		byte reg3 = readRegister(0x06);
+
+		for (size_t i = 0; i < 8; i++) {
+			if (IS_BIT_SET(reg1, i) || IS_BIT_SET(reg1, i + 1)) { // Half-bridge n (1-4)
+				printf("Disabling motor #%i\r\n", i);
+				disableMotor(i);
+			}
+			if (IS_BIT_SET(reg2, i) || IS_BIT_SET(reg2, i + 1)) { // Half-bridge n (5-8)
+				printf("Disabling motor #%i\r\n", i);
+				disableMotor(i + 8);
+			}
+			if (IS_BIT_SET(reg2, i) || IS_BIT_SET(reg2, i + 1)) { // Half-bridge n (9-12)
+				printf("Disabling motor #%i\r\n", i);
+				disableMotor(i + 16);
+			}
+		}
+	}
+	if (IS_BIT_SET(statusRegister, 3)) { // Over-current error; selectively shutdown motors
+		printf("Over-current Protection Active... Disabling Troubled Motors...\r\n");
+		byte reg1 = readRegister(0x01);
+		byte reg2 = readRegister(0x02);
+		byte reg3 = readRegister(0x03);
+
+		for (size_t i = 0; i < 8; i++) {
+			if (IS_BIT_SET(reg1, i) || IS_BIT_SET(reg1, i + 1)) { // Half-bridge n (1-4)
+				printf("Disabling motor #%i\r\n", i);
+				disableMotor(i);
+			}
+			if (IS_BIT_SET(reg2, i) || IS_BIT_SET(reg2, i + 1)) { // Half-bridge n (5-8)
+				printf("Disabling motor #%i\r\n", i);
+				disableMotor(i + 8);
+			}
+			if (IS_BIT_SET(reg2, i) || IS_BIT_SET(reg2, i + 1)) { // Half-bridge n (9-12)
+				printf("Disabling motor #%i\r\n", i);
+				disableMotor(i + 16);
+			}
+		}
+	}
+	if (IS_BIT_SET(statusRegister, 2)) // Under-voltage error; shut everything down
+		error_irq_trigger(ErrorCodes::DRVUVLOError);
+	if (IS_BIT_SET(statusRegister, 1)) // Over-voltage error; shut everything down
+		error_irq_trigger(ErrorCodes::DRVOVPError);
+	// Unknown error; shut everything down
+	error_irq_trigger(ErrorCodes::DRVError);
+
+	return;
+}
+
 void DRV89xx::writeConfig() {
 	// Flush the 28 bytes of cache
-//	SPI.beginTransaction(_spi_settings);
 	for (byte i = DRV89xx_CONFIG_WRITE_START; i < DRV89xx_CONFIG_BYTES; i++) {
 		DRV89xx::writeRegister(i, _config_cache[i]);
 	}
-//	SPI.endTransaction();
 }
 
 void DRV89xx::updateConfig() {
 	if (!config_changed_)
 		return;  // ignore duplicate writes
 	config_changed_ = false;
-	// Serial.println("Writing config update");
 
 #ifdef DEBUG_DRV89xx_MOTORS
 	readErrorStatus(true, true);
@@ -140,9 +193,7 @@ void DRV89xx::updateConfig() {
 	for (i = 0; i < DRV89xx_MAX_MOTORS; i++) {
 		_motor[i].applyConfig(_config_cache);
 	}
-//	SPI.beginTransaction(_spi_settings);
 	for (i = DRV89xx_UPDATE_START; i <= DRV89xx_UPDATE_END; i++) {
 		DRV89xx::writeRegister(i, _config_cache[i]);
 	}
-//	SPI.endTransaction();
 }
