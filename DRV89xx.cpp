@@ -67,6 +67,8 @@ byte DRV89xx::readRegister(byte address) {
  */
 void DRV89xx::readErrorStatus(bool print, bool reset) {
 
+	uint16_t statusReg = 0;
+
 	if (HAL_GPIO_ReadPin(_nFault.port, _nFault.pin) == GPIO_PIN_RESET) {
 		if (print)
 			printf("Error detected\r\n");
@@ -74,26 +76,39 @@ void DRV89xx::readErrorStatus(bool print, bool reset) {
 		if (print)
 			printf("No DRV errors seen\r\n");
 	}
-
+	statusReg = readRegister(0x00);
 	if (print) {
-		printf("Status: 0x%04X\r\n", readRegister(0x00));
+		printf("Status: 0x%04X\r\n", statusReg);
 		printf("Overcurrent: 0x%04X 0x%04X 0x%04X\r\n", readRegister(0x03), readRegister(0x02), readRegister(0x01));
 		printf("Open Load: 0x%04X 0x%04X 0x%04X\r\n", readRegister(0x06), readRegister(0x05), readRegister(0x04));
 	}
 
 	if ((HAL_GPIO_ReadPin(_nFault.port, _nFault.pin) == GPIO_PIN_RESET) && reset) {
 		if (print) {
-			printf("Attempting to reset!\r\n");
+			printf("Attempting to reset DRV!\r\n");
 		}
 		_config_cache[(int) DRV89xxRegister::CONFIG_CTRL] = 0b00000001; // clear fault
 		writeConfig();  // try writing the config again, just in case
 		_config_cache[(int) DRV89xxRegister::CONFIG_CTRL] = 0b00000000; // and go back to normal
 
 		if (HAL_GPIO_ReadPin(_nFault.port, _nFault.pin) == GPIO_PIN_RESET) { // still have an error, stop everything
-			printf("Cannot reset nFault, resetting everything...\r\n");
+			printf("Cannot reset nFault...\r\n");
 			HAL_GPIO_WritePin(_nSleep.port, _nSleep.pin, GPIO_PIN_RESET); // disable chip
 			HAL_GPIO_WritePin(_cs.port, _cs.pin, GPIO_PIN_SET); // disable chip select
-			error_irq_trigger(ErrorCodes::DRVError);
+
+			if (statusReg & (1 << 7))
+				error_irq_trigger(ErrorCodes::DRVOTSDError);
+			else if (statusReg & (1 << 5))
+				error_irq_trigger(ErrorCodes::DRVOLDError);
+			else if (statusReg & (1 << 4))
+				error_irq_trigger(ErrorCodes::DRVOCPError);
+			else if (statusReg & (1 << 3))
+				error_irq_trigger(ErrorCodes::DRVUVLOError);
+			else if (statusReg & (1 << 2))
+				error_irq_trigger(ErrorCodes::DRVOVPError);
+			else
+				error_irq_trigger(ErrorCodes::DRVError);
+
 		}
 	}
 
