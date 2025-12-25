@@ -33,6 +33,11 @@ typedef struct DRV89xxHalfBridge {
     byte bitshift_2;  // used for enable, and pwm_map
 } DRV89xxHalfBridge;
 
+typedef struct HalfBridgePair {
+	byte HB1;
+	byte HB2;
+} HalfBridgePair;
+
 class DRV89xxMotor
 {
   public:
@@ -48,7 +53,9 @@ class DRV89xxMotor
     // Disable this motor
     void disable();
     // Set the speed of this motor
-    void set(byte speed, byte direction);
+    void set(byte speed, int8_t direction);
+
+    HalfBridgePair getHalfBridges();
 
   private:
     // Process variables

@@ -27,7 +27,9 @@
 #define DRV89xx_BRAKE 0
 #define DRV89xx_REVERSE -1
 
-#define IS_BIT_SET(a, n) ((a & (1 << n)) != 0)
+#define MAX_NUM_FAULTS_ALLOWED 10
+
+#define IS_BIT_SET(a, n) ((a & (1 << (n))) != 0)
 
 typedef struct {
 	GPIO_TypeDef* port;
@@ -45,8 +47,9 @@ class DRV89xx
     byte writeRegister(byte address, byte value);
     byte readRegister(byte address);
     void readErrorStatus(bool print, bool reset);
-    void disableErroredMotors(uint16_t statusRegister);
+    void disableErroredMotors(byte statusRegister);
     void writeConfig();
+    void updateConfig(bool errorCheck);
     void updateConfig();
 
     void setMotor(byte motor, byte speed, byte direction){ 
@@ -78,6 +81,11 @@ class DRV89xx
     bool config_changed_ = false;
     byte _config_cache[DRV89xx_CONFIG_BYTES] = {0};  // Fully initalize the config cache as 0
     DRV89xxMotor _motor[DRV89xx_MAX_MOTORS];
+    byte _numFaultsOccurred = 0;
+
+    int findMotorWithHB(byte hb1, byte hb2);
+
+    bool _isDRV8192 = false;
 };
 
 #endif

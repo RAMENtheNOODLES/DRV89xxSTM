@@ -19,6 +19,7 @@ void DRV89xxMotor::populateHalfbridgeOffsets(byte offset, byte half_bridge) {
 	_half_bridge[offset].id = half_bridge;
 	if (half_bridge == 0)
 		return;
+
 	_half_bridge[offset].enable_register = (byte) DRV89xxRegister::OP_CTRL_1
 			+ (half_bridge - 1) / 4; // cache the register address. HB1-4 are OP_CTRL_1, 5-8 are _2, and 9-12 are _3
 	_half_bridge[offset].pwm_map_register =
@@ -79,7 +80,7 @@ void DRV89xxMotor::disable() {
 	_enabled = false;
 }
 
-void DRV89xxMotor::set(byte speed, byte direction) {
+void DRV89xxMotor::set(byte speed, int8_t direction) {
 	_enabled = true;
 	_speed = speed;
 	_direction = direction;
@@ -124,11 +125,14 @@ void DRV89xxMotor::setBridgeHSPWM(byte *settings, DRV89xxHalfBridge &bridge) {
 
 	BIT_SET(settings[bridge.enable_register], bridge.bitshift_2 + HIGH_SIDE); // enable highside of half bridge
 	BIT_CLEAR(settings[bridge.enable_register], bridge.bitshift_2); // disable low side of half bridge
+	BIT_CLEAR(settings[bridge.pwm_ctrl_register], bridge.bitshift_1); // disable PWM on this half bridge
+	/*
 	BIT_SET(settings[bridge.pwm_ctrl_register], bridge.bitshift_1); // enable PWM on this half bridge
 	BIT_WRITE(settings[bridge.pwm_map_register], bridge.bitshift_2,
 			(_pwm_channel & 0b1));  // write the low bit
 	BIT_WRITE(settings[bridge.pwm_map_register], bridge.bitshift_2 + 1,
 			(_pwm_channel & 0b10) >> 1); // write the high bit
+	*/
 }
 
 void DRV89xxMotor::setBridgeOpen(byte *settings, DRV89xxHalfBridge &bridge) {
@@ -156,4 +160,8 @@ void DRV89xxMotor::setPWMFrequency(byte *settings, byte _speed) {
 	// printf("]: ");
 	// printf(_speed);
 	settings[(int) DRV89xxRegister::PWM_DUTY_CTRL_1 + _pwm_channel] = _speed;
+}
+
+HalfBridgePair DRV89xxMotor::getHalfBridges() {
+	return {_half_bridge[0].id, _half_bridge[1].id};
 }
