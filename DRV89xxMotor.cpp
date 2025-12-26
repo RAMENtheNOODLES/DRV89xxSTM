@@ -80,8 +80,12 @@ void DRV89xxMotor::disable() {
 	_enabled = false;
 }
 
-void DRV89xxMotor::set(byte speed, int8_t direction) {
+void DRV89xxMotor::enable() {
 	_enabled = true;
+}
+
+void DRV89xxMotor::set(byte speed, int8_t direction) {
+	// _enabled = true;
 	_speed = speed;
 	_direction = direction;
 }

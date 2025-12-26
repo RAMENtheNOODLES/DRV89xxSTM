@@ -52,6 +52,10 @@ class DRV89xxMotor
 
     // Disable this motor
     void disable();
+
+    // Enable this motor
+    void enable();
+
     // Set the speed of this motor
     void set(byte speed, int8_t direction);
 

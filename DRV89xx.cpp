@@ -54,6 +54,7 @@ void DRV89xx::configMotor(byte motor_id, byte hb1, byte hb2, byte pwm_channel,
 			motor_id, hb1, hb2, pwm_channel, reverse_delay);
 
 	_motor[motor_id] = DRV89xxMotor(hb1, hb2, pwm_channel, reverse_delay, _clk);
+	_motor[motor_id].enable(); // Enable this motor
 }
 
 byte DRV89xx::writeRegister(byte address, byte value) {
